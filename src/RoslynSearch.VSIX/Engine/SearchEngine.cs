@@ -8,6 +8,8 @@ using Microsoft.CodeAnalysis;
 using System.Threading;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.CSharp.Scripting;
+using Microsoft.CodeAnalysis.Scripting;
 
 namespace RoslynSearch.VSIX.Engine
 {
@@ -15,7 +17,7 @@ namespace RoslynSearch.VSIX.Engine
     {
         static CancellationTokenSource tokenSource = null;
 
-        public static IEnumerable<SearchResult> Search(string query, SearchSource source, CancellationToken token = default(CancellationToken))
+        public static IEnumerable<SearchResult> Search(string query, SearchSource source, bool usingScript, CancellationToken token = default(CancellationToken))
         {
             if (token == null)
             {
@@ -27,22 +29,33 @@ namespace RoslynSearch.VSIX.Engine
             switch (source)
             {
                 case SearchSource.EntireSolution:
-                    return Search(query, WorkspaceHelpers.GetCurrentSolution().Projects.SelectMany(n => n.Documents), token);
+                    if (usingScript)
+                        return Search(query, WorkspaceHelpers.GetCurrentSolution().Projects.SelectMany(n => n.Documents), token);
+                    else
+                        return SearchInStrings(query, WorkspaceHelpers.GetCurrentSolution().Projects.SelectMany(n => n.Documents), token);
+
                 case SearchSource.CurrentProject:
-                    return Search(query, WorkspaceHelpers.GetCurrentProject().Documents, token);
+                    if (usingScript)
+                        return Search(query, WorkspaceHelpers.GetCurrentProject().Documents, token);
+                    else
+                        return SearchInStrings(query, WorkspaceHelpers.GetCurrentProject().Documents, token);
+
                 case SearchSource.CurrentDocument:
-                    return Search(query, new Document[] { WorkspaceHelpers.GetCurrentDocument() }, token);
+                    if (usingScript)
+                        return Search(query, new Document[] { WorkspaceHelpers.GetCurrentDocument() }, token);
+                    else
+                        return SearchInStrings(query, new Document[] { WorkspaceHelpers.GetCurrentDocument() }, token);
+
                 default:
                     throw new ArgumentOutOfRangeException(nameof(source));
             }
         }
 
-        private static IEnumerable<SearchResult> Search(string query, IEnumerable<Document> source, CancellationToken token)
+        private static IEnumerable<SearchResult> SearchInStrings(string query, IEnumerable<Document> source, CancellationToken token)
         {
             List<SearchResult> results = new List<SearchResult>();
             Parallel.ForEach(source, async currentDocument =>
             {
-                // Use Scripting API to build this expression:
                 var root = await currentDocument.GetSyntaxRootAsync(token);
                 var matches = root.DescendantNodes().OfType<LiteralExpressionSyntax>().Where(n => n.IsKind(SyntaxKind.StringLiteralExpression)).Where(n => n.ToString().Contains(query));
                 results.AddRange(matches.Select(m =>
@@ -60,5 +73,48 @@ namespace RoslynSearch.VSIX.Engine
             return results;
 
         }
+
+        class Globals
+        {
+            internal SyntaxNode SyntaxRoot;
+        }
+
+        private static IEnumerable<SearchResult> Search(string query, IEnumerable<Document> source, CancellationToken token)
+        {
+            List<SearchResult> results = new List<SearchResult>();
+            try
+            {
+                var script = CSharpScript.Create<IEnumerable<SyntaxNode>>(
+                    query,
+                    ScriptOptions.Default
+                        .WithReferences(typeof(SyntaxNode).Assembly)
+                        .WithImports("Microsoft.CodeAnalysis", "Microsoft.CodeAnalysis.CSharp", "Microsoft.CodeAnalysis.CSharp.Syntax", "System.Linq"),
+                    globalsType: typeof(Globals)
+                    );
+                Parallel.ForEach(source, async currentDocument =>
+                {
+                    var root = await currentDocument.GetSyntaxRootAsync(token);
+                    var matches = await script.RunAsync(new Globals { SyntaxRoot = root });
+                    results.AddRange(matches.ReturnValue.Select(m =>
+                    {
+                        var position = m.GetLocation().GetLineSpan();
+                        return new SearchResult()
+                        {
+                            ExactMatch = m.ToString(),
+                            LineNumber = position.StartLinePosition.Line,
+                            Path = position.Path,
+                            EntireLine = String.Empty,
+                        };
+                    }));
+                });
+                return results;
+            }
+            catch (CompilationErrorException cee)
+            {
+                throw;
+            }
+            
+        }
+
     }
 }

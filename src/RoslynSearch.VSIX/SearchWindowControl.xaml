@@ -11,9 +11,19 @@
     <UserControl.Resources>
         <Style TargetType="TextBlock">
             <Setter Property="Margin" Value="2 4" />
+            <Setter Property="Foreground" Value="{DynamicResource VsBrush.WindowText}" />
         </Style>
         <Style TargetType="RadioButton">
             <Setter Property="Margin" Value="2 1" />
+            <Setter Property="Foreground" Value="{DynamicResource VsBrush.WindowText}" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource VsBrush.Window}" />
+            <Setter Property="Foreground" Value="{DynamicResource VsBrush.WindowText}" />
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="{DynamicResource VsBrush.Window}" />
+            <Setter Property="Foreground" Value="{DynamicResource VsBrush.WindowText}" />
         </Style>
     </UserControl.Resources>
     <Grid>
@@ -28,6 +38,14 @@
             <RadioButton x:Name="SearchDocument"
                          Content="Current Document" 
                          GroupName="Source" />
+            <TextBlock>Search:</TextBlock>
+            <RadioButton x:Name="SearchInStrings"
+                         Content="in strings" 
+                         GroupName="Query" />
+            <RadioButton x:Name="SearchQuery"
+                         Content="as script" 
+                         GroupName="Query"
+                         Checked="SearchWithScriptChecked"/>
             <TextBlock>Search query:</TextBlock>
             <TextBox x:Name="Query" />
             <Button Content="Search" Click="SearchButtonClick" />

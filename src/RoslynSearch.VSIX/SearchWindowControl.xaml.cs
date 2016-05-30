@@ -44,7 +44,28 @@ namespace RoslynSearch.VSIX
             else if (SearchDocument.IsChecked == true)
                 source = SearchSource.CurrentDocument;
 
-            Results.Text = String.Join("\n", SearchEngine.Search(Query.Text, source).Select(n => n.ToString()));
+            try
+            {
+                Results.Text = "";
+                foreach (var result in SearchEngine.Search(Query.Text, source, usingScript: SearchQuery.IsChecked == true))
+                {
+                    Results.Text += $"\n{result}";
+                    OutputWindow.WriteLine(result.ToString());
+                }
+            }
+            catch (Exception ex)
+            {
+                Results.Text = ex.ToString();
+                OutputWindow.WriteLine(ex.ToString());
+            }
+        }
+
+        private void SearchWithScriptChecked(object sender, RoutedEventArgs e)
+        {
+            if (String.IsNullOrWhiteSpace(Query.Text))
+            {
+                Query.Text = "root.DescendantNodes().OfType<LiteralExpressionSyntax>().Where(n => n.IsKind(SyntaxKind.StringLiteralExpression)).Where(n => n.ToString().Contains(query))";
+            }
         }
     }
 }
