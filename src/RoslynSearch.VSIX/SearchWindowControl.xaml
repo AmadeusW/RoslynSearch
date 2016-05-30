@@ -52,7 +52,13 @@
                          Checked="SearchWithScriptChecked"/>
             <TextBlock>Search query:</TextBlock>
             <TextBox x:Name="Query" KeyDown="QueryBoxKeyDown" />
-            <Button Content="Search" Click="SearchButtonClick" />
+            <Button x:Name="SearchButton" 
+                    Content="Search" 
+                    Click="SearchButtonClick" />
+            <Button x:Name="StopButton" 
+                    Content="Stop" 
+                    Visibility="Collapsed"
+                    Click="StopButtonClick" />
             <ProgressBar x:Name="Progress" 
                          Maximum="100" 
                          Value="0" 

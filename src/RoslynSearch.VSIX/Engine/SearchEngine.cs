@@ -15,96 +15,51 @@ namespace RoslynSearch.VSIX.Engine
 {
     internal class SearchEngine
     {
-        static CancellationTokenSource tokenSource = null;
         public static int ProgressMax { get; private set; }
         public static int Progress { get; private set; }
 
-        public static IEnumerable<SearchResult> Search(string query, SearchSource source, bool usingScript, CancellationToken token = default(CancellationToken))
+        public static  void Search(string query, SearchSource source, bool usingScript, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler)
         {
-            if (token == null)
-            {
-                tokenSource?.Cancel();
-                tokenSource = new CancellationTokenSource();
-                token = tokenSource.Token;
-            }
-
             switch (source)
             {
                 case SearchSource.EntireSolution:
                     if (usingScript)
-                        return Search(query, WorkspaceHelpers.GetCurrentSolution().Projects.SelectMany(n => n.Documents), token);
+                        Search(query, WorkspaceHelpers.GetCurrentSolution().Projects.SelectMany(n => n.Documents), token, partialResultHandler);
                     else
-                        return SearchInStrings(query, WorkspaceHelpers.GetCurrentSolution().Projects.SelectMany(n => n.Documents), token);
+                        SearchInStrings(query, WorkspaceHelpers.GetCurrentSolution().Projects.SelectMany(n => n.Documents), token, partialResultHandler);
+                    return;
 
                 case SearchSource.CurrentProject:
                     if (usingScript)
-                        return Search(query, WorkspaceHelpers.GetCurrentProject().Documents, token);
+                        Search(query, WorkspaceHelpers.GetCurrentProject().Documents, token, partialResultHandler);
                     else
-                        return SearchInStrings(query, WorkspaceHelpers.GetCurrentProject().Documents, token);
+                        SearchInStrings(query, WorkspaceHelpers.GetCurrentProject().Documents, token, partialResultHandler);
+                    return;
 
                 case SearchSource.CurrentDocument:
                     if (usingScript)
-                        return Search(query, new Document[] { WorkspaceHelpers.GetCurrentDocument() }, token);
+                        Search(query, new Document[] { WorkspaceHelpers.GetCurrentDocument() }, token, partialResultHandler);
                     else
-                        return SearchInStrings(query, new Document[] { WorkspaceHelpers.GetCurrentDocument() }, token);
+                        SearchInStrings(query, new Document[] { WorkspaceHelpers.GetCurrentDocument() }, token, partialResultHandler);
+                    return;
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(source));
             }
         }
 
-        private static IEnumerable<SearchResult> SearchInStrings(string query, IEnumerable<Document> source, CancellationToken token)
+        private static void SearchInStrings(string query, IEnumerable<Document> source, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler)
         {
             Progress = 0;
             ProgressMax = source.Count();
 
-            List <SearchResult> results = new List<SearchResult>();
             Parallel.ForEach(source, async currentDocument =>
             {
                 var root = await currentDocument.GetSyntaxRootAsync(token);
                 var matches = root.DescendantNodes().OfType<LiteralExpressionSyntax>().Where(n => n.IsKind(SyntaxKind.StringLiteralExpression)).Where(n => n.ToString().Contains(query));
-                results.AddRange(matches.Select(m =>
+                if (matches.Any())
                 {
-                    var position = m.GetLocation().GetLineSpan();
-                    return new SearchResult()
-                    {
-                        ExactMatch = m.ToString(),
-                        LineNumber = position.StartLinePosition.Line,
-                        Path = position.Path,
-                        EntireLine = String.Empty,
-                    };
-                }));
-                Progress++;
-            });
-            return results;
-
-        }
-
-        class Globals
-        {
-            internal SyntaxNode SyntaxRoot;
-        }
-
-        private static IEnumerable<SearchResult> Search(string query, IEnumerable<Document> source, CancellationToken token)
-        {
-            Progress = 0;
-            ProgressMax = source.Count();
-
-            List<SearchResult> results = new List<SearchResult>();
-            try
-            {
-                var script = CSharpScript.Create<IEnumerable<SyntaxNode>>(
-                    query,
-                    ScriptOptions.Default
-                        .WithReferences(typeof(SyntaxNode).Assembly)
-                        .WithImports("Microsoft.CodeAnalysis", "Microsoft.CodeAnalysis.CSharp", "Microsoft.CodeAnalysis.CSharp.Syntax", "System.Linq"),
-                    globalsType: typeof(Globals)
-                    );
-                Parallel.ForEach(source, async currentDocument =>
-                {
-                    var root = await currentDocument.GetSyntaxRootAsync(token);
-                    var matches = await script.RunAsync(new Globals { SyntaxRoot = root });
-                    results.AddRange(matches.ReturnValue.Select(m =>
+                    var results = matches.Select(m =>
                     {
                         var position = m.GetLocation().GetLineSpan();
                         return new SearchResult()
@@ -114,16 +69,53 @@ namespace RoslynSearch.VSIX.Engine
                             Path = position.Path,
                             EntireLine = String.Empty,
                         };
-                    }));
-                    Progress++;
-                });
-                return results;
-            }
-            catch (CompilationErrorException cee)
-            {
-                throw;
-            }
+                    });
+                    partialResultHandler(results);
+                }
 
+                Progress++;
+            });
+
+        }
+
+        class Globals
+        {
+            internal SyntaxNode SyntaxRoot;
+        }
+
+        private static void Search(string query, IEnumerable<Document> source, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler)
+        {
+            Progress = 0;
+            ProgressMax = source.Count();
+
+            var script = CSharpScript.Create<IEnumerable<SyntaxNode>>(
+                query,
+                ScriptOptions.Default
+                    .WithReferences(typeof(SyntaxNode).Assembly)
+                    .WithImports("Microsoft.CodeAnalysis", "Microsoft.CodeAnalysis.CSharp", "Microsoft.CodeAnalysis.CSharp.Syntax", "System.Linq"),
+                globalsType: typeof(Globals)
+                );
+            Parallel.ForEach(source, async currentDocument =>
+            {
+                var root = await currentDocument.GetSyntaxRootAsync(token);
+                var matches = await script.RunAsync(new Globals { SyntaxRoot = root });
+                if (matches.ReturnValue.Any())
+                {
+                    var results = matches.ReturnValue.Select(m =>
+                    {
+                        var position = m.GetLocation().GetLineSpan();
+                        return new SearchResult()
+                        {
+                            ExactMatch = m.ToString(),
+                            LineNumber = position.StartLinePosition.Line,
+                            Path = position.Path,
+                            EntireLine = String.Empty,
+                        };
+                    });
+                    partialResultHandler(results);
+                }
+                Progress++;
+            });
         }
 
     }

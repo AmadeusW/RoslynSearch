@@ -8,8 +8,10 @@ namespace RoslynSearch.VSIX
 {
     using Engine;
     using System;
+    using System.Collections.Generic;
     using System.Diagnostics.CodeAnalysis;
     using System.Linq;
+    using System.Threading;
     using System.Windows;
     using System.Windows.Controls;
     using System.Windows.Threading;
@@ -22,7 +24,8 @@ namespace RoslynSearch.VSIX
         {
             Interval = TimeSpan.FromMilliseconds(100),
         };
-        
+        static CancellationTokenSource tokenSource = null;
+
         public SearchWindowControl()
         {
             this.InitializeComponent();
@@ -40,21 +43,33 @@ namespace RoslynSearch.VSIX
             else if (SearchDocument.IsChecked == true)
                 source = SearchSource.CurrentDocument;
 
-            BeginTrackingProgress();
+            BeginSearch();
+
+            tokenSource?.Cancel();
+            tokenSource = new CancellationTokenSource();
+            var token = tokenSource.Token;
 
             try
             {
-                foreach (var result in SearchEngine.Search(Query.Text, source, usingScript: SearchQuery.IsChecked == true))
-                {
-                    OutputWindow.WriteLine(result.ToString());
-                }
+                SearchEngine.Search(Query.Text, source, SearchQuery.IsChecked == true, token, handleResults);
+                OutputWindow.WriteLine("---");
+                OutputWindow.WriteLine($"Search finished. Processed {SearchEngine.Progress} files.");
             }
             catch (Exception ex)
             {
+                OutputWindow.WriteLine("---");
                 OutputWindow.WriteLine(ex.ToString());
             }
 
-            EndTrackingProgress();
+            EndSearch();
+        }
+
+        private void handleResults(IEnumerable<SearchResult> partialResults)
+        {
+            foreach (var result in partialResults)
+            {
+                OutputWindow.WriteLine(result.ToString());
+            }
         }
 
         private void uiTimerTick(object sender, EventArgs e)
@@ -75,19 +90,33 @@ namespace RoslynSearch.VSIX
             }
         }
 
-        private void BeginTrackingProgress()
+        private void BeginSearch()
         {
             _uiTimer.Start();
+            Progress.Value = 0;
+            StopButton.Visibility = Visibility.Visible;
+            SearchButton.Visibility = Visibility.Collapsed;
         }
 
-        private void EndTrackingProgress()
+        private void EndSearch()
         {
             _uiTimer.Stop();
+            Progress.Visibility = Visibility.Hidden;
+            Progress.Value = 0;
+            StopButton.Visibility = Visibility.Collapsed;
+            SearchButton.Visibility = Visibility.Visible;
         }
 
         private void SearchButtonClick(object sender, RoutedEventArgs e)
         {
             Search();
+        }
+
+        private void StopButtonClick(object sender, RoutedEventArgs e)
+        {
+            tokenSource?.Cancel();
+            EndSearch();
+            return;
         }
 
         private void QueryBoxKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
