@@ -12,28 +12,24 @@ namespace RoslynSearch.VSIX
     using System.Linq;
     using System.Windows;
     using System.Windows.Controls;
-
+    using System.Windows.Threading;
     /// <summary>
     /// Interaction logic for SearchWindowControl.
     /// </summary>
     public partial class SearchWindowControl : UserControl
     {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="SearchWindowControl"/> class.
-        /// </summary>
+        DispatcherTimer _uiTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(100),
+        };
+        
         public SearchWindowControl()
         {
             this.InitializeComponent();
+            _uiTimer.Tick += uiTimerTick;
         }
 
-        /// <summary>
-        /// Handles click on the button by displaying a message box.
-        /// </summary>
-        /// <param name="sender">The event sender.</param>
-        /// <param name="e">The event args.</param>
-        [SuppressMessage("Microsoft.Globalization", "CA1300:SpecifyMessageBoxOptions", Justification = "Sample code")]
-        [SuppressMessage("StyleCop.CSharp.NamingRules", "SA1300:ElementMustBeginWithUpperCaseLetter", Justification = "Default event handler naming pattern")]
-        private void SearchButtonClick(object sender, RoutedEventArgs e)
+        private void Search()
         {
             SearchSource source = default(SearchSource);
 
@@ -44,20 +40,31 @@ namespace RoslynSearch.VSIX
             else if (SearchDocument.IsChecked == true)
                 source = SearchSource.CurrentDocument;
 
+            BeginTrackingProgress();
+
             try
             {
-                Results.Text = "";
                 foreach (var result in SearchEngine.Search(Query.Text, source, usingScript: SearchQuery.IsChecked == true))
                 {
-                    Results.Text += $"\n{result}";
                     OutputWindow.WriteLine(result.ToString());
                 }
             }
             catch (Exception ex)
             {
-                Results.Text = ex.ToString();
                 OutputWindow.WriteLine(ex.ToString());
             }
+
+            EndTrackingProgress();
+        }
+
+        private void uiTimerTick(object sender, EventArgs e)
+        {
+            Progress.Maximum = SearchEngine.ProgressMax;
+            Progress.Value = SearchEngine.Progress;
+            if (Progress.Value == 0 || Progress.Value == Progress.Maximum)
+                Progress.Visibility = Visibility.Hidden;
+            else
+                Progress.Visibility = Visibility.Visible;
         }
 
         private void SearchWithScriptChecked(object sender, RoutedEventArgs e)
@@ -65,6 +72,29 @@ namespace RoslynSearch.VSIX
             if (String.IsNullOrWhiteSpace(Query.Text))
             {
                 Query.Text = "root.DescendantNodes().OfType<LiteralExpressionSyntax>().Where(n => n.IsKind(SyntaxKind.StringLiteralExpression)).Where(n => n.ToString().Contains(query))";
+            }
+        }
+
+        private void BeginTrackingProgress()
+        {
+            _uiTimer.Start();
+        }
+
+        private void EndTrackingProgress()
+        {
+            _uiTimer.Stop();
+        }
+
+        private void SearchButtonClick(object sender, RoutedEventArgs e)
+        {
+            Search();
+        }
+
+        private void QueryBoxKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter)
+            {
+                Search();
             }
         }
     }

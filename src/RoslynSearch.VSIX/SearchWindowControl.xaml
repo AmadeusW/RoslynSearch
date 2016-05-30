@@ -18,10 +18,12 @@
             <Setter Property="Foreground" Value="{DynamicResource VsBrush.WindowText}" />
         </Style>
         <Style TargetType="Button">
+            <Setter Property="Margin" Value="2 4" />
             <Setter Property="Background" Value="{DynamicResource VsBrush.Window}" />
             <Setter Property="Foreground" Value="{DynamicResource VsBrush.WindowText}" />
         </Style>
         <Style TargetType="TextBox">
+            <Setter Property="Margin" Value="2 1" />
             <Setter Property="Background" Value="{DynamicResource VsBrush.Window}" />
             <Setter Property="Foreground" Value="{DynamicResource VsBrush.WindowText}" />
         </Style>
@@ -31,6 +33,7 @@
             <TextBlock>Search in:</TextBlock>
             <RadioButton x:Name="SearchSolution"
                          Content="Entire Solution" 
+                         IsChecked="True"
                          GroupName="Source" />
             <RadioButton x:Name="SearchProject"
                          Content="Current Project" 
@@ -41,16 +44,19 @@
             <TextBlock>Search:</TextBlock>
             <RadioButton x:Name="SearchInStrings"
                          Content="in strings" 
+                         IsChecked="True"
                          GroupName="Query" />
             <RadioButton x:Name="SearchQuery"
                          Content="as script" 
                          GroupName="Query"
                          Checked="SearchWithScriptChecked"/>
             <TextBlock>Search query:</TextBlock>
-            <TextBox x:Name="Query" />
+            <TextBox x:Name="Query" KeyDown="QueryBoxKeyDown" />
             <Button Content="Search" Click="SearchButtonClick" />
-            <TextBox x:Name="Results"
-                    IsReadOnly="True" AcceptsReturn="True" MinLines="10" />
+            <ProgressBar x:Name="Progress" 
+                         Maximum="100" 
+                         Value="0" 
+                         Visibility="Collapsed" />
         </StackPanel>
     </Grid>
 </UserControl>

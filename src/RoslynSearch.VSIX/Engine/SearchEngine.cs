@@ -16,6 +16,8 @@ namespace RoslynSearch.VSIX.Engine
     internal class SearchEngine
     {
         static CancellationTokenSource tokenSource = null;
+        public static int ProgressMax { get; private set; }
+        public static int Progress { get; private set; }
 
         public static IEnumerable<SearchResult> Search(string query, SearchSource source, bool usingScript, CancellationToken token = default(CancellationToken))
         {
@@ -53,7 +55,10 @@ namespace RoslynSearch.VSIX.Engine
 
         private static IEnumerable<SearchResult> SearchInStrings(string query, IEnumerable<Document> source, CancellationToken token)
         {
-            List<SearchResult> results = new List<SearchResult>();
+            Progress = 0;
+            ProgressMax = source.Count();
+
+            List <SearchResult> results = new List<SearchResult>();
             Parallel.ForEach(source, async currentDocument =>
             {
                 var root = await currentDocument.GetSyntaxRootAsync(token);
@@ -69,6 +74,7 @@ namespace RoslynSearch.VSIX.Engine
                         EntireLine = String.Empty,
                     };
                 }));
+                Progress++;
             });
             return results;
 
@@ -81,6 +87,9 @@ namespace RoslynSearch.VSIX.Engine
 
         private static IEnumerable<SearchResult> Search(string query, IEnumerable<Document> source, CancellationToken token)
         {
+            Progress = 0;
+            ProgressMax = source.Count();
+
             List<SearchResult> results = new List<SearchResult>();
             try
             {
@@ -106,6 +115,7 @@ namespace RoslynSearch.VSIX.Engine
                             EntireLine = String.Empty,
                         };
                     }));
+                    Progress++;
                 });
                 return results;
             }
@@ -113,7 +123,7 @@ namespace RoslynSearch.VSIX.Engine
             {
                 throw;
             }
-            
+
         }
 
     }
