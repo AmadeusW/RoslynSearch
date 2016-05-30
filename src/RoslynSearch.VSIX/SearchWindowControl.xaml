@@ -41,7 +41,10 @@
             <RadioButton x:Name="SearchDocument"
                          Content="Current Document" 
                          GroupName="Source" />
-            <TextBlock>Search:</TextBlock>
+            <TextBlock>Excluding files:</TextBlock>
+            <TextBox x:Name="ExcludedFiles"
+                     Text=".NETFramework,AssemblyInfo.cs"/>
+            <TextBlock>Search method:</TextBlock>
             <RadioButton x:Name="SearchInStrings"
                          Content="in strings" 
                          IsChecked="True"

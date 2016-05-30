@@ -25,6 +25,7 @@ namespace RoslynSearch.VSIX
             Interval = TimeSpan.FromMilliseconds(100),
         };
         static CancellationTokenSource tokenSource = null;
+        bool _searching;
 
         public SearchWindowControl()
         {
@@ -51,7 +52,7 @@ namespace RoslynSearch.VSIX
 
             try
             {
-                SearchEngine.Search(Query.Text, source, SearchQuery.IsChecked == true, token, handleResults);
+                SearchEngine.Search(Query.Text, source, ExcludedFiles.Text, SearchQuery.IsChecked == true, token, handleResults);
                 OutputWindow.WriteLine("---");
                 OutputWindow.WriteLine($"Search finished. Processed {SearchEngine.Progress} files.");
             }
@@ -70,13 +71,19 @@ namespace RoslynSearch.VSIX
             {
                 OutputWindow.WriteLine(result.ToString());
             }
+            Dispatcher.BeginInvoke(new Action(() => updateUI()));
         }
 
         private void uiTimerTick(object sender, EventArgs e)
         {
+            updateUI();
+        }
+
+        private void updateUI()
+        {
             Progress.Maximum = SearchEngine.ProgressMax;
             Progress.Value = SearchEngine.Progress;
-            if (Progress.Value == 0 || Progress.Value == Progress.Maximum)
+            if (!_searching || Progress.Value == 0 || Progress.Value == Progress.Maximum)
                 Progress.Visibility = Visibility.Hidden;
             else
                 Progress.Visibility = Visibility.Visible;
@@ -92,6 +99,8 @@ namespace RoslynSearch.VSIX
 
         private void BeginSearch()
         {
+            _searching = true;
+            OutputWindow.Activate();
             _uiTimer.Start();
             Progress.Value = 0;
             StopButton.Visibility = Visibility.Visible;
@@ -100,6 +109,8 @@ namespace RoslynSearch.VSIX
 
         private void EndSearch()
         {
+            _searching = false;
+            OutputWindow.Activate();
             _uiTimer.Stop();
             Progress.Visibility = Visibility.Hidden;
             Progress.Value = 0;

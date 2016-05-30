@@ -39,7 +39,6 @@ namespace RoslynSearch.VSIX
                 return;
             }
             _customOutputPane.OutputStringThreadSafe(message + Environment.NewLine);
-            _customOutputPane.Activate(); // Brings this pane into view
         }
 
         /// <summary>
