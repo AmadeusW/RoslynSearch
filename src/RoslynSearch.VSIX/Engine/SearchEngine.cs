@@ -22,7 +22,7 @@ namespace RoslynSearch.VSIX.Engine
 
         public static async Task Search(string query, SearchSource source, string excludedFilesInput, bool usingScript, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler)
         {
-            string[] excludedFiles = excludedFilesInput.Split(',');
+            IEnumerable<string> excludedFiles = excludedFilesInput.Split(',').Select(n => n.Trim());
             switch (source)
             {
                 case SearchSource.EntireSolution:
@@ -51,12 +51,12 @@ namespace RoslynSearch.VSIX.Engine
             }
         }
 
-        private static async Task SearchInStrings(string query, IEnumerable<Document> source, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler, string[] excludedFiles)
+        private static async Task SearchInStrings(string query, IEnumerable<Document> source, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler, IEnumerable<string> excludedFiles)
         {
             Progress = 0;
             ProgressMax = source.Count();
 
-            Task.WaitAll(source.Select(currentDocument => Task.Run(async() => 
+            await Task.WhenAll(source.Select(currentDocument => Task.Run(async() => 
             {
                 if (excludedFiles.Any(e => !String.IsNullOrEmpty(e) && currentDocument.FilePath.Contains(e)))
                     return;
@@ -79,11 +79,11 @@ namespace RoslynSearch.VSIX.Engine
                     partialResultHandler(results);
                 }
                 Progress++;
-            })).ToArray());
+            })));
 
         }
 
-        private static async Task Search(string query, IEnumerable<Document> source, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler, string[] excludedFiles)
+        private static async Task Search(string query, IEnumerable<Document> source, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler, IEnumerable<string> excludedFiles)
         {
             Progress = 0;
             ProgressMax = source.Count();
@@ -95,13 +95,13 @@ namespace RoslynSearch.VSIX.Engine
                     .WithImports("Microsoft.CodeAnalysis", "Microsoft.CodeAnalysis.CSharp", "Microsoft.CodeAnalysis.CSharp.Syntax", "System.Linq", "RoslynSearch.DTO"),
                 globalsType: typeof(Globals)
                 );
-            foreach (var currentDocument in source)
-            //Task.WaitAll(source.Select(currentDocument => Task.Run(async () =>
+            //foreach (var currentDocument in source)
+            await Task.WhenAll(source.Select(currentDocument => Task.Run(async () =>
             {
                 try
                 {
                     if (excludedFiles.Any(e => !String.IsNullOrEmpty(e) && currentDocument.FilePath.Contains(e)))
-                        continue;
+                        return;
 
                     var root = await currentDocument.GetSyntaxRootAsync(token);
                     var matches = await script.RunAsync(new Globals { SyntaxRoot = root });
@@ -126,8 +126,8 @@ namespace RoslynSearch.VSIX.Engine
                     var x = ex;
                 }
                 Progress++;
-            //})).ToArray());
-            }
+            })));
+            //}
         }
 
     }
