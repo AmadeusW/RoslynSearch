@@ -10,6 +10,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
+using RoslynSearch.DTO;
 
 namespace RoslynSearch.VSIX.Engine
 {
@@ -19,30 +20,30 @@ namespace RoslynSearch.VSIX.Engine
         public static int Progress { get; private set; }
         static object ProgressLock = new object();
 
-        public static  void Search(string query, SearchSource source, string excludedFilesInput, bool usingScript, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler)
+        public static async Task Search(string query, SearchSource source, string excludedFilesInput, bool usingScript, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler)
         {
             string[] excludedFiles = excludedFilesInput.Split(',');
             switch (source)
             {
                 case SearchSource.EntireSolution:
                     if (usingScript)
-                        Search(query, WorkspaceHelpers.GetCurrentSolution().Projects.SelectMany(n => n.Documents), token, partialResultHandler, excludedFiles);
+                        await Search(query, WorkspaceHelpers.GetCurrentSolution().Projects.SelectMany(n => n.Documents), token, partialResultHandler, excludedFiles);
                     else
-                        SearchInStrings(query, WorkspaceHelpers.GetCurrentSolution().Projects.SelectMany(n => n.Documents), token, partialResultHandler, excludedFiles);
+                        await SearchInStrings(query, WorkspaceHelpers.GetCurrentSolution().Projects.SelectMany(n => n.Documents), token, partialResultHandler, excludedFiles);
                     return;
 
                 case SearchSource.CurrentProject:
                     if (usingScript)
-                        Search(query, WorkspaceHelpers.GetCurrentProject().Documents, token, partialResultHandler, excludedFiles);
+                        await Search(query, WorkspaceHelpers.GetCurrentProject().Documents, token, partialResultHandler, excludedFiles);
                     else
-                        SearchInStrings(query, WorkspaceHelpers.GetCurrentProject().Documents, token, partialResultHandler, excludedFiles);
+                        await SearchInStrings(query, WorkspaceHelpers.GetCurrentProject().Documents, token, partialResultHandler, excludedFiles);
                     return;
 
                 case SearchSource.CurrentDocument:
                     if (usingScript)
-                        Search(query, new Document[] { WorkspaceHelpers.GetCurrentDocument() }, token, partialResultHandler, excludedFiles);
+                        await Search(query, new Document[] { WorkspaceHelpers.GetCurrentDocument() }, token, partialResultHandler, excludedFiles);
                     else
-                        SearchInStrings(query, new Document[] { WorkspaceHelpers.GetCurrentDocument() }, token, partialResultHandler, excludedFiles);
+                        await SearchInStrings(query, new Document[] { WorkspaceHelpers.GetCurrentDocument() }, token, partialResultHandler, excludedFiles);
                     return;
 
                 default:
@@ -50,12 +51,12 @@ namespace RoslynSearch.VSIX.Engine
             }
         }
 
-        private static void SearchInStrings(string query, IEnumerable<Document> source, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler, string[] excludedFiles)
+        private static async Task SearchInStrings(string query, IEnumerable<Document> source, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler, string[] excludedFiles)
         {
             Progress = 0;
             ProgressMax = source.Count();
 
-            Parallel.ForEach(source, async currentDocument =>
+            Task.WaitAll(source.Select(currentDocument => Task.Run(async() => 
             {
                 if (excludedFiles.Any(e => !String.IsNullOrEmpty(e) && currentDocument.FilePath.Contains(e)))
                     return;
@@ -78,16 +79,11 @@ namespace RoslynSearch.VSIX.Engine
                     partialResultHandler(results);
                 }
                 Progress++;
-            });
+            })).ToArray());
 
         }
 
-        class Globals
-        {
-            internal SyntaxNode SyntaxRoot;
-        }
-
-        private static void Search(string query, IEnumerable<Document> source, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler, string[] excludedFiles)
+        private static async Task Search(string query, IEnumerable<Document> source, CancellationToken token, Action<IEnumerable<SearchResult>> partialResultHandler, string[] excludedFiles)
         {
             Progress = 0;
             ProgressMax = source.Count();
@@ -95,34 +91,43 @@ namespace RoslynSearch.VSIX.Engine
             var script = CSharpScript.Create<IEnumerable<SyntaxNode>>(
                 query,
                 ScriptOptions.Default
-                    .WithReferences(typeof(SyntaxNode).Assembly)
-                    .WithImports("Microsoft.CodeAnalysis", "Microsoft.CodeAnalysis.CSharp", "Microsoft.CodeAnalysis.CSharp.Syntax", "System.Linq"),
+                    .WithReferences(typeof(SyntaxNode).Assembly, typeof(CSharpSyntaxNode).Assembly, typeof(Globals).Assembly)
+                    .WithImports("Microsoft.CodeAnalysis", "Microsoft.CodeAnalysis.CSharp", "Microsoft.CodeAnalysis.CSharp.Syntax", "System.Linq", "RoslynSearch.DTO"),
                 globalsType: typeof(Globals)
                 );
-            Parallel.ForEach(source, async currentDocument =>
+            foreach (var currentDocument in source)
+            //Task.WaitAll(source.Select(currentDocument => Task.Run(async () =>
             {
-                if (excludedFiles.Any(e => !String.IsNullOrEmpty(e) && currentDocument.FilePath.Contains(e)))
-                    return;
-
-                var root = await currentDocument.GetSyntaxRootAsync(token);
-                var matches = await script.RunAsync(new Globals { SyntaxRoot = root });
-                if (matches.ReturnValue.Any())
+                try
                 {
-                    var results = matches.ReturnValue.Select(m =>
+                    if (excludedFiles.Any(e => !String.IsNullOrEmpty(e) && currentDocument.FilePath.Contains(e)))
+                        continue;
+
+                    var root = await currentDocument.GetSyntaxRootAsync(token);
+                    var matches = await script.RunAsync(new Globals { SyntaxRoot = root });
+                    if (matches.ReturnValue.Any())
                     {
-                        var position = m.GetLocation().GetLineSpan();
-                        return new SearchResult()
+                        var results = matches.ReturnValue.Select(m =>
                         {
-                            ExactMatch = m.ToString(),
-                            LineNumber = position.StartLinePosition.Line,
-                            Path = position.Path,
-                            EntireLine = String.Empty,
-                        };
-                    });
-                    partialResultHandler(results);
+                            var position = m.GetLocation().GetLineSpan();
+                            return new SearchResult()
+                            {
+                                ExactMatch = m.ToString(),
+                                LineNumber = position.StartLinePosition.Line,
+                                Path = position.Path,
+                                EntireLine = String.Empty,
+                            };
+                        });
+                        partialResultHandler(results);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    var x = ex;
                 }
                 Progress++;
-            });
+            //})).ToArray());
+            }
         }
 
     }

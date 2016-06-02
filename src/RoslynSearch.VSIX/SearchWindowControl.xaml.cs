@@ -12,6 +12,7 @@ namespace RoslynSearch.VSIX
     using System.Diagnostics.CodeAnalysis;
     using System.Linq;
     using System.Threading;
+    using System.Threading.Tasks;
     using System.Windows;
     using System.Windows.Controls;
     using System.Windows.Threading;
@@ -33,7 +34,7 @@ namespace RoslynSearch.VSIX
             _uiTimer.Tick += uiTimerTick;
         }
 
-        private void Search()
+        private async Task Search()
         {
             SearchSource source = default(SearchSource);
 
@@ -52,7 +53,7 @@ namespace RoslynSearch.VSIX
 
             try
             {
-                SearchEngine.Search(Query.Text, source, ExcludedFiles.Text, SearchQuery.IsChecked == true, token, handleResults);
+                await SearchEngine.Search(Query.Text, source, ExcludedFiles.Text, SearchQuery.IsChecked == true, token, handleResults);
                 OutputWindow.WriteLine("---");
                 OutputWindow.WriteLine($"Search finished. Processed {SearchEngine.Progress} files.");
             }
@@ -93,7 +94,7 @@ namespace RoslynSearch.VSIX
         {
             if (String.IsNullOrWhiteSpace(Query.Text))
             {
-                Query.Text = "root.DescendantNodes().OfType<LiteralExpressionSyntax>().Where(n => n.IsKind(SyntaxKind.StringLiteralExpression)).Where(n => n.ToString().Contains(query))";
+                Query.Text = "SyntaxRoot.DescendantNodes().OfType<LiteralExpressionSyntax>().Where(n => n.IsKind(SyntaxKind.StringLiteralExpression)).Where(n => n.ToString().Contains(\"query\"))";
             }
         }
 
@@ -118,9 +119,9 @@ namespace RoslynSearch.VSIX
             SearchButton.Visibility = Visibility.Visible;
         }
 
-        private void SearchButtonClick(object sender, RoutedEventArgs e)
+        private async void SearchButtonClick(object sender, RoutedEventArgs e)
         {
-            Search();
+            await Search();
         }
 
         private void StopButtonClick(object sender, RoutedEventArgs e)
@@ -130,11 +131,11 @@ namespace RoslynSearch.VSIX
             return;
         }
 
-        private void QueryBoxKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        private async void QueryBoxKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
             if (e.Key == System.Windows.Input.Key.Enter)
             {
-                Search();
+                await Search();
             }
         }
     }
