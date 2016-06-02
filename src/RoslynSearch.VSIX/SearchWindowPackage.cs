@@ -70,6 +70,7 @@ namespace RoslynSearch.VSIX
         protected override void Initialize()
         {
             SearchWindowCommand.Initialize(this);
+            OutputWindow.Initialize(this);
             base.Initialize();
         }
 

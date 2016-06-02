@@ -11,9 +11,21 @@
     <UserControl.Resources>
         <Style TargetType="TextBlock">
             <Setter Property="Margin" Value="2 4" />
+            <Setter Property="Foreground" Value="{DynamicResource VsBrush.WindowText}" />
         </Style>
         <Style TargetType="RadioButton">
             <Setter Property="Margin" Value="2 1" />
+            <Setter Property="Foreground" Value="{DynamicResource VsBrush.WindowText}" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Margin" Value="2 4" />
+            <Setter Property="Background" Value="{DynamicResource VsBrush.Window}" />
+            <Setter Property="Foreground" Value="{DynamicResource VsBrush.WindowText}" />
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Margin" Value="2 1" />
+            <Setter Property="Background" Value="{DynamicResource VsBrush.Window}" />
+            <Setter Property="Foreground" Value="{DynamicResource VsBrush.WindowText}" />
         </Style>
     </UserControl.Resources>
     <Grid>
@@ -21,6 +33,7 @@
             <TextBlock>Search in:</TextBlock>
             <RadioButton x:Name="SearchSolution"
                          Content="Entire Solution" 
+                         IsChecked="True"
                          GroupName="Source" />
             <RadioButton x:Name="SearchProject"
                          Content="Current Project" 
@@ -28,11 +41,31 @@
             <RadioButton x:Name="SearchDocument"
                          Content="Current Document" 
                          GroupName="Source" />
+            <TextBlock>Excluding files:</TextBlock>
+            <TextBox x:Name="ExcludedFiles"
+                     Text=".NETFramework,AssemblyInfo.cs"/>
+            <TextBlock>Search method:</TextBlock>
+            <RadioButton x:Name="SearchInStrings"
+                         Content="in strings" 
+                         IsChecked="True"
+                         GroupName="Query" />
+            <RadioButton x:Name="SearchQuery"
+                         Content="as script" 
+                         GroupName="Query"
+                         Checked="SearchWithScriptChecked"/>
             <TextBlock>Search query:</TextBlock>
-            <TextBox x:Name="Query" />
-            <Button Content="Search" Click="SearchButtonClick" />
-            <TextBox x:Name="Results"
-                    IsReadOnly="True" AcceptsReturn="True" MinLines="10" />
+            <TextBox x:Name="Query" KeyDown="QueryBoxKeyDown" />
+            <Button x:Name="SearchButton" 
+                    Content="Search" 
+                    Click="SearchButtonClick" />
+            <Button x:Name="StopButton" 
+                    Content="Stop" 
+                    Visibility="Collapsed"
+                    Click="StopButtonClick" />
+            <ProgressBar x:Name="Progress" 
+                         Maximum="100" 
+                         Value="0" 
+                         Visibility="Collapsed" />
         </StackPanel>
     </Grid>
 </UserControl>

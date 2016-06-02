@@ -8,32 +8,33 @@ namespace RoslynSearch.VSIX
 {
     using Engine;
     using System;
+    using System.Collections.Generic;
     using System.Diagnostics.CodeAnalysis;
     using System.Linq;
+    using System.Threading;
+    using System.Threading.Tasks;
     using System.Windows;
     using System.Windows.Controls;
-
+    using System.Windows.Threading;
     /// <summary>
     /// Interaction logic for SearchWindowControl.
     /// </summary>
     public partial class SearchWindowControl : UserControl
     {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="SearchWindowControl"/> class.
-        /// </summary>
+        DispatcherTimer _uiTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(100),
+        };
+        static CancellationTokenSource tokenSource = null;
+        bool _searching;
+
         public SearchWindowControl()
         {
             this.InitializeComponent();
+            _uiTimer.Tick += uiTimerTick;
         }
 
-        /// <summary>
-        /// Handles click on the button by displaying a message box.
-        /// </summary>
-        /// <param name="sender">The event sender.</param>
-        /// <param name="e">The event args.</param>
-        [SuppressMessage("Microsoft.Globalization", "CA1300:SpecifyMessageBoxOptions", Justification = "Sample code")]
-        [SuppressMessage("StyleCop.CSharp.NamingRules", "SA1300:ElementMustBeginWithUpperCaseLetter", Justification = "Default event handler naming pattern")]
-        private void SearchButtonClick(object sender, RoutedEventArgs e)
+        private async Task Search()
         {
             SearchSource source = default(SearchSource);
 
@@ -44,7 +45,98 @@ namespace RoslynSearch.VSIX
             else if (SearchDocument.IsChecked == true)
                 source = SearchSource.CurrentDocument;
 
-            Results.Text = String.Join("\n", SearchEngine.Search(Query.Text, source).Select(n => n.ToString()));
+            BeginSearch();
+
+            tokenSource?.Cancel();
+            tokenSource = new CancellationTokenSource();
+            var token = tokenSource.Token;
+
+            try
+            {
+                await SearchEngine.Search(Query.Text, source, ExcludedFiles.Text, SearchQuery.IsChecked == true, token, handleResults);
+                OutputWindow.WriteLine("---");
+                OutputWindow.WriteLine($"Search finished. Processed {SearchEngine.Progress} files.");
+            }
+            catch (Exception ex)
+            {
+                OutputWindow.WriteLine("---");
+                OutputWindow.WriteLine(ex.ToString());
+            }
+
+            EndSearch();
+        }
+
+        private void handleResults(IEnumerable<SearchResult> partialResults)
+        {
+            foreach (var result in partialResults)
+            {
+                OutputWindow.WriteLine(result.ToString());
+            }
+            Dispatcher.BeginInvoke(new Action(() => updateUI()));
+        }
+
+        private void uiTimerTick(object sender, EventArgs e)
+        {
+            updateUI();
+        }
+
+        private void updateUI()
+        {
+            Progress.Maximum = SearchEngine.ProgressMax;
+            Progress.Value = SearchEngine.Progress;
+            if (!_searching || Progress.Value == 0 || Progress.Value == Progress.Maximum)
+                Progress.Visibility = Visibility.Hidden;
+            else
+                Progress.Visibility = Visibility.Visible;
+        }
+
+        private void SearchWithScriptChecked(object sender, RoutedEventArgs e)
+        {
+            if (String.IsNullOrWhiteSpace(Query.Text))
+            {
+                Query.Text = "SyntaxRoot.DescendantNodes().OfType<LiteralExpressionSyntax>().Where(n => n.IsKind(SyntaxKind.StringLiteralExpression)).Where(n => n.ToString().Contains(\"query\"))";
+            }
+        }
+
+        private void BeginSearch()
+        {
+            _searching = true;
+            OutputWindow.Activate();
+            _uiTimer.Start();
+            Progress.Value = 0;
+            StopButton.Visibility = Visibility.Visible;
+            SearchButton.Visibility = Visibility.Collapsed;
+        }
+
+        private void EndSearch()
+        {
+            _searching = false;
+            OutputWindow.Activate();
+            _uiTimer.Stop();
+            Progress.Visibility = Visibility.Hidden;
+            Progress.Value = 0;
+            StopButton.Visibility = Visibility.Collapsed;
+            SearchButton.Visibility = Visibility.Visible;
+        }
+
+        private async void SearchButtonClick(object sender, RoutedEventArgs e)
+        {
+            await Search();
+        }
+
+        private void StopButtonClick(object sender, RoutedEventArgs e)
+        {
+            tokenSource?.Cancel();
+            EndSearch();
+            return;
+        }
+
+        private async void QueryBoxKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter)
+            {
+                await Search();
+            }
         }
     }
 }
